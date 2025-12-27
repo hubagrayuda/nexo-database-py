@@ -7,8 +7,11 @@ from redis import Redis as SyncRedis
 from sqlalchemy.engine import create_engine as create_sync_engine, Engine
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
 from typing import Generic, Literal, TypeVar, overload
+from nexo.enums.environment import OptEnvironment
 from nexo.types.dict import StrToAnyDict
-from ..enums import Connection
+from nexo.types.string import OptStr
+from ..enums import Connection, CacheOrigin, CacheLayer
+from ..utils import build_cache_namespace
 from .additional import AdditionalConfigT, RedisAdditionalConfig
 from .connection import (
     PostgreSQLConnectionConfig,
@@ -133,6 +136,145 @@ class RedisConfig(
             return AsyncRedis.from_url(url, **self.client_kwargs)
         else:
             return SyncRedis.from_url(url, **self.client_kwargs)
+
+    @overload
+    def build_namespace(
+        self,
+        *ext: str,
+        use_self_environment: Literal[False],
+        environment: OptEnvironment = None,
+        use_self_base: Literal[False],
+        base: OptStr = None,
+        origin: Literal[CacheOrigin.SERVICE],
+        layer: CacheLayer,
+        sep: str = ":",
+    ) -> str: ...
+    @overload
+    def build_namespace(
+        self,
+        *ext: str,
+        use_self_environment: Literal[False],
+        environment: OptEnvironment = None,
+        use_self_base: Literal[False],
+        base: OptStr = None,
+        client: str,
+        origin: Literal[CacheOrigin.CLIENT],
+        layer: CacheLayer,
+        sep: str = ":",
+    ) -> str: ...
+    @overload
+    def build_namespace(
+        self,
+        *ext: str,
+        use_self_environment: Literal[False],
+        environment: OptEnvironment = None,
+        use_self_base: Literal[True] = True,
+        origin: Literal[CacheOrigin.SERVICE],
+        layer: CacheLayer,
+        sep: str = ":",
+    ) -> str: ...
+    @overload
+    def build_namespace(
+        self,
+        *ext: str,
+        use_self_environment: Literal[False],
+        environment: OptEnvironment = None,
+        use_self_base: Literal[True] = True,
+        client: str,
+        origin: Literal[CacheOrigin.CLIENT],
+        layer: CacheLayer,
+        sep: str = ":",
+    ) -> str: ...
+    @overload
+    def build_namespace(
+        self,
+        *ext: str,
+        use_self_environment: Literal[True] = True,
+        use_self_base: Literal[False],
+        base: OptStr = None,
+        origin: Literal[CacheOrigin.SERVICE],
+        layer: CacheLayer,
+        sep: str = ":",
+    ) -> str: ...
+    @overload
+    def build_namespace(
+        self,
+        *ext: str,
+        use_self_environment: Literal[True] = True,
+        use_self_base: Literal[False],
+        base: OptStr = None,
+        client: str,
+        origin: Literal[CacheOrigin.CLIENT],
+        layer: CacheLayer,
+        sep: str = ":",
+    ) -> str: ...
+    @overload
+    def build_namespace(
+        self,
+        *ext: str,
+        use_self_environment: Literal[True] = True,
+        use_self_base: Literal[True] = True,
+        origin: Literal[CacheOrigin.SERVICE],
+        layer: CacheLayer,
+        sep: str = ":",
+    ) -> str: ...
+    @overload
+    def build_namespace(
+        self,
+        *ext: str,
+        use_self_environment: Literal[True] = True,
+        use_self_base: Literal[True] = True,
+        client: str,
+        origin: Literal[CacheOrigin.CLIENT],
+        layer: CacheLayer,
+        sep: str = ":",
+    ) -> str: ...
+    def build_namespace(
+        self,
+        *ext: str,
+        use_self_environment: bool = True,
+        environment: OptEnvironment = None,
+        use_self_base: bool = True,
+        base: OptStr = None,
+        client: OptStr = None,
+        origin: CacheOrigin,
+        layer: CacheLayer,
+        sep: str = ":",
+    ) -> str:
+        if use_self_environment:
+            final_environment = self.identifier.environment
+        else:
+            final_environment = environment
+
+        if use_self_base:
+            final_base = self.additional.base_namespace
+        else:
+            final_base = base
+
+        if origin is CacheOrigin.CLIENT:
+            if client is None:
+                raise ValueError(
+                    "Argument 'client' can not be None if origin is client"
+                )
+
+            return build_cache_namespace(
+                *ext,
+                environment=final_environment,
+                base=final_base,
+                client=client,
+                origin=origin,
+                layer=layer,
+                sep=sep,
+            )
+
+        return build_cache_namespace(
+            *ext,
+            environment=final_environment,
+            base=final_base,
+            origin=origin,
+            layer=layer,
+            sep=sep,
+        )
 
 
 NoSQLConfigT = TypeVar(
