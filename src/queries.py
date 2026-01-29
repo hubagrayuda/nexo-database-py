@@ -2,11 +2,11 @@ from sqlalchemy import and_, asc, cast, desc, or_, select
 from sqlalchemy.orm import aliased
 from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.sql import Select
-from sqlalchemy.types import DATE, String, TEXT, TIMESTAMP
+from sqlalchemy.types import String, TEXT
 from typing import Any, Sequence, Type
 from nexo.enums.order import Order
 from nexo.enums.status import OptListOfDataStatuses
-from nexo.schemas.mixins.filter import DateFilter
+from nexo.schemas.mixins.filter import RangeFilter
 from nexo.schemas.mixins.sort import SortColumn
 from nexo.types.any import ManyAny
 from nexo.types.boolean import OptBool
@@ -115,38 +115,54 @@ def filter_ids(
     return stmt
 
 
-def filter_timestamps(
+def filter_ranges(
     stmt: StmtTypeT,
     table: Type[DeclarativeBaseT],
-    date_filters: Sequence[DateFilter],
+    range_filters: Sequence[RangeFilter],
+    columns: OptListOfStrs = None,
+    strict: bool = True,
 ) -> StmtTypeT:
-    if date_filters:
-        for date_filter in date_filters:
-            try:
-                sqla_table = table.__table__
-                column = sqla_table.columns[date_filter.name]
-                column_attr: InstrumentedAttribute = getattr(table, date_filter.name)
-                if isinstance(column.type, (TIMESTAMP, DATE)):
-                    if date_filter.from_date and date_filter.to_date:
-                        stmt = stmt.filter(
-                            column_attr.between(
-                                date_filter.from_date, date_filter.to_date
-                            )
-                        )
-                    elif date_filter.from_date:
-                        stmt = stmt.filter(column_attr >= date_filter.from_date)
-                    elif date_filter.to_date:
-                        stmt = stmt.filter(column_attr <= date_filter.to_date)
-            except KeyError:
+    if not range_filters:
+        return stmt
+
+    for range_filter in range_filters:
+        column_attr = validate_column(table=table, column=range_filter.name)
+        if column_attr is None:
+            if strict:
+                raise AttributeError(
+                    f"Invalid column '{range_filter.name}' for table '{table.__tablename__}'"
+                )
+            else:
                 continue
+
+        if columns is not None and range_filter.name not in columns:
+            if strict:
+                raise AttributeError(
+                    f"Invalid column '{range_filter.name}' for table '{table.__tablename__}'"
+                )
+            else:
+                continue
+
+        if range_filter.from_value and range_filter.to_value:
+            stmt = stmt.where(
+                column_attr.between(
+                    range_filter.from_value,
+                    range_filter.to_value,
+                )
+            )
+        elif range_filter.from_value:
+            stmt = stmt.where(column_attr >= range_filter.from_value)
+        elif range_filter.to_value:
+            stmt = stmt.where(column_attr <= range_filter.to_value)
+
     return stmt
 
 
 def filter_statuses(
     stmt: StmtTypeT,
     table: Type[DeclarativeBaseT],
-    column: str = "status",
     statuses: OptListOfDataStatuses = None,
+    column: str = "status",
     strict: bool = True,
 ) -> StmtTypeT:
     column_attr = validate_column(table=table, column=column)

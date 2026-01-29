@@ -76,7 +76,8 @@ class MongoClientManager(ClientManager[MongoConfig, AsyncIOMotorClient, MongoCli
 class RedisClientManager(ClientManager[RedisConfig, AsyncRedis, SyncRedis]):
     async def async_clear(self, prefixes: ListOfStrs | str | None = None):
         if prefixes is None:
-            prefixes = [self._config.additional.base_namespace]
+            prefix = f"{self._config.identifier.environment}:{self._config.additional.base_namespace}"
+            prefixes = [prefix]
 
         if isinstance(prefixes, str):
             prefixes = [prefixes]
