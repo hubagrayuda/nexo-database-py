@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexo-database"
-version = "0.0.39"
+version = "0.1.2"
 description = "Database package for Nexo"
 authors = [
     { name = "Agra Bima Yuda", email = "hub.agrayuda@gmail.com" }
 ]
-license = { text = "Proprietary" }
+license = "MIT"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -54,12 +54,12 @@ dependencies = [
     "iniconfig>=2.1.0",
     "motor>=3.7.1",
     "mypy_extensions>=1.1.0",
-    "nexo-crypto>=0.0.5",
-    "nexo-enums>=0.0.5",
-    "nexo-logging>=0.0.5",
-    "nexo-schemas>=0.0.39",
-    "nexo-types>=0.0.5",
-    "nexo-utils>=0.0.5",
+    "nexo-crypto>=0.0.10",
+    "nexo-enums>=0.0.10",
+    "nexo-logging>=0.0.10",
+    "nexo-schemas>=0.1.2",
+    "nexo-types>=0.0.10",
+    "nexo-utils>=0.0.10",
     "nodeenv>=1.9.1",
     "opentelemetry-api>=1.37.0",
     "opentelemetry-sdk>=1.37.0",
