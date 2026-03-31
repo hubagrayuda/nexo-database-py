@@ -124,6 +124,7 @@ class SessionManager(Generic[SQLConfigT]):
         """Explicit sync session."""
         return self.make(Connection.SYNC)
 
+    @asynccontextmanager
     async def _async_session_handler(
         self,
         operation_id: OptUUID = None,
@@ -331,6 +332,7 @@ class SessionManager(Generic[SQLConfigT]):
             operation.log(self._logger, LogLevel.DEBUG)
             operation.publish(self._logger, self._publishers)
 
+    @contextmanager
     def _sync_session_handler(
         self,
         operation_id: OptUUID = None,
@@ -538,8 +540,7 @@ class SessionManager(Generic[SQLConfigT]):
             operation.log(self._logger, LogLevel.DEBUG)
             operation.publish(self._logger, self._publishers)
 
-    @asynccontextmanager
-    async def _async_context_manager(
+    def get_async(
         self,
         operation_id: OptUUID = None,
         connection_context: OptConnectionContext = None,
@@ -548,32 +549,9 @@ class SessionManager(Generic[SQLConfigT]):
         impersonation: OptImpersonation = None,
         raise_exc: bool = True,
         raise_as_maleo_exception: bool = True,
-    ) -> AsyncGenerator[AsyncSession, None]:
-        """Async context manager implementation."""
-        async for session in self._async_session_handler(
-            operation_id,
-            connection_context,
-            authentication,
-            authorization,
-            impersonation,
-            raise_exc,
-            raise_as_maleo_exception,
-        ):
-            yield session
-
-    @contextmanager
-    def _sync_context_manager(
-        self,
-        operation_id: OptUUID = None,
-        connection_context: OptConnectionContext = None,
-        authentication: OptAnyAuthentication = None,
-        authorization: OptAnyAuthorization = None,
-        impersonation: OptImpersonation = None,
-        raise_exc: bool = True,
-        raise_as_maleo_exception: bool = True,
-    ) -> Generator[Session, None, None]:
-        """Sync context manager implementation."""
-        yield from self._sync_session_handler(
+    ) -> AbstractAsyncContextManager[AsyncSession]:
+        """Explicit async context manager."""
+        return self._async_session_handler(
             operation_id,
             connection_context,
             authentication,
@@ -583,7 +561,27 @@ class SessionManager(Generic[SQLConfigT]):
             raise_as_maleo_exception,
         )
 
-    # Overloaded context manager methods
+    def get_sync(
+        self,
+        operation_id: OptUUID = None,
+        connection_context: OptConnectionContext = None,
+        authentication: OptAnyAuthentication = None,
+        authorization: OptAnyAuthorization = None,
+        impersonation: OptImpersonation = None,
+        raise_exc: bool = True,
+        raise_as_maleo_exception: bool = True,
+    ) -> AbstractContextManager[Session]:
+        """Explicit sync context manager."""
+        return self._sync_session_handler(
+            operation_id,
+            connection_context,
+            authentication,
+            authorization,
+            impersonation,
+            raise_exc,
+            raise_as_maleo_exception,
+        )
+
     @overload
     def get(
         self,
@@ -596,6 +594,7 @@ class SessionManager(Generic[SQLConfigT]):
         raise_exc: bool = True,
         raise_as_maleo_exception: bool = True,
     ) -> AbstractAsyncContextManager[AsyncSession]: ...
+
     @overload
     def get(
         self,
@@ -608,6 +607,7 @@ class SessionManager(Generic[SQLConfigT]):
         raise_exc: bool = True,
         raise_as_maleo_exception: bool = True,
     ) -> AbstractContextManager[Session]: ...
+
     def get(
         self,
         connection: Connection = Connection.ASYNC,
@@ -621,7 +621,7 @@ class SessionManager(Generic[SQLConfigT]):
     ) -> AbstractAsyncContextManager[AsyncSession] | AbstractContextManager[Session]:
         """Context manager for manual session handling."""
         if connection is Connection.ASYNC:
-            return self._async_context_manager(
+            return self.get_async(
                 operation_id,
                 connection_context,
                 authentication,
@@ -631,7 +631,7 @@ class SessionManager(Generic[SQLConfigT]):
                 raise_as_maleo_exception,
             )
         else:
-            return self._sync_context_manager(
+            return self.get_sync(
                 operation_id,
                 connection_context,
                 authentication,
@@ -640,52 +640,6 @@ class SessionManager(Generic[SQLConfigT]):
                 raise_exc,
                 raise_as_maleo_exception,
             )
-
-    # Alternative: More explicit methods
-    @asynccontextmanager
-    async def get_async(
-        self,
-        operation_id: OptUUID = None,
-        connection_context: OptConnectionContext = None,
-        authentication: OptAnyAuthentication = None,
-        authorization: OptAnyAuthorization = None,
-        impersonation: OptImpersonation = None,
-        raise_exc: bool = True,
-        raise_as_maleo_exception: bool = True,
-    ) -> AsyncGenerator[AsyncSession, None]:
-        """Explicit async context manager."""
-        async for session in self._async_session_handler(
-            operation_id,
-            connection_context,
-            authentication,
-            authorization,
-            impersonation,
-            raise_exc,
-            raise_as_maleo_exception,
-        ):
-            yield session
-
-    @contextmanager
-    def get_sync(
-        self,
-        operation_id: OptUUID = None,
-        connection_context: OptConnectionContext = None,
-        authentication: OptAnyAuthentication = None,
-        authorization: OptAnyAuthorization = None,
-        impersonation: OptImpersonation = None,
-        raise_exc: bool = True,
-        raise_as_maleo_exception: bool = True,
-    ) -> Generator[Session, None, None]:
-        """Explicit sync context manager."""
-        yield from self._sync_session_handler(
-            operation_id,
-            connection_context,
-            authentication,
-            authorization,
-            impersonation,
-            raise_exc,
-            raise_as_maleo_exception,
-        )
 
     def as_async_dependency(
         self,
@@ -699,8 +653,10 @@ class SessionManager(Generic[SQLConfigT]):
     ):
         """Explicit async dependency injection."""
 
-        def dependency() -> AsyncGenerator[AsyncSession, None]:
-            return self._async_session_handler(
+        async def dependency() -> AsyncGenerator[AsyncSession, None]:
+            # By using `async with` here, exceptions thrown in FastAPI
+            # safely flow back up into `get_async`
+            async with self.get_async(
                 operation_id,
                 connection_context,
                 authentication,
@@ -708,7 +664,8 @@ class SessionManager(Generic[SQLConfigT]):
                 impersonation,
                 raise_exc,
                 raise_as_maleo_exception,
-            )
+            ) as session:
+                yield session
 
         return dependency
 
@@ -725,7 +682,7 @@ class SessionManager(Generic[SQLConfigT]):
         """Explicit sync dependency injection."""
 
         def dependency() -> Generator[Session, None, None]:
-            return self._sync_session_handler(
+            with self.get_sync(
                 operation_id,
                 connection_context,
                 authentication,
@@ -733,7 +690,8 @@ class SessionManager(Generic[SQLConfigT]):
                 impersonation,
                 raise_exc,
                 raise_as_maleo_exception,
-            )
+            ) as session:
+                yield session
 
         return dependency
 
